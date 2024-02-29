@@ -1,0 +1,10 @@
+SOGVFISolver.alpha = 0.36
+SOGVFISolver.beta = 0.99
+SOGVFISolver.rho = 0.95
+SOGVFISolver.sigma = 0.0072
+SOGVFISolver.delta = 0.025
+SOGVFISolver.gamma = 2
+SOGVFISolver.eta = 1.5
+SOGVFISolver.B = 1.5
+SOGVFISolver.L = 1
+SOGVFISolver.labor_choice = [0.3, 0.35]
