@@ -35,12 +35,14 @@ c_t + K_{t+1} = Y_t + (1-\delta)K_t.
 $$
 
 First-order condition:
+
 $$
 c_t^{-\gamma} = \beta\mathbb{E}_t\Bigg\{ c_{t+1}^{-\gamma} \Big[\alpha A_{t+1}(\frac{L_{t+1}}{K_{t+1}})^{1-\alpha} + 1 - \delta\Big] \Bigg\},\\
 c_t^{-\gamma} (1-\alpha) A_t (\frac{K_t}{L_t})^{\alpha}= B(\bar{L}-L_t)^{-\eta}, \text{if L is continuous.}
 $$
 
 Steady state:
+
 $$
 Y=K^{\alpha}L^{1-\alpha}\\
 c+\delta K = Y\\
