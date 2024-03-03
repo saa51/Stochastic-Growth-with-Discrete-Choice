@@ -1,6 +1,8 @@
 import gin
 import numpy as np
 from scipy.optimize import root_scalar
+from MarkovApprox import Rowenhorst
+from vfi_res import SOGVFIResult
 
 
 @gin.configurable
@@ -29,7 +31,7 @@ class SOGVFISolver:
         self.eta = eta
         self.B = B
         self.L = L
-        self.labor_choice = labor_choice
+        self.labor_choice = np.array(labor_choice)
 
     def steady_state(self):
         kl_ratio = ((1 / self.beta - 1 + self.delta) / self.alpha) ** (1 / (self.alpha - 1))
@@ -39,18 +41,18 @@ class SOGVFISolver:
         def foc_err_drv(l):
             return -self.gamma * cl_ratio * kl_ratio ** self.alpha * (1 - self.alpha) * (cl_ratio * l) ** (-self.gamma - 1) - self.eta * self.B * (self.L - l) ** (-self.eta - 1)
         res = root_scalar(foc_err, method='newton', fprime=foc_err_drv, x0=self.L / 2)
-        l_ss = res.root
-        k_ss = l_ss * kl_ratio
-        c_ss = l_ss * cl_ratio
-        y_ss = c_ss + self.delta * k_ss
-        return k_ss, c_ss, y_ss, l_ss
+        self.l_ss = res.root
+        self.k_ss = self.l_ss * kl_ratio
+        self.c_ss = self.l_ss * cl_ratio
+        self.y_ss = self.c_ss + self.delta * self.k_ss
+        return self.k_ss, self.c_ss, self.y_ss, self.l_ss
 
     def crra(self, x, coeff):
         return x ** (1 - coeff) / (1 - coeff) if coeff != 1 else np.log(x)
 
     def utility(self, c):
         u = np.ones_like(c)
-        u[c > 0] = c ** (1 - self.gamma) / (1 - self.gamma) if self.gamma != 1 else np.log(c)
+        u[c > 0] = c[c > 0] ** (1 - self.gamma) / (1 - self.gamma) if self.gamma != 1 else np.log(c[c > 0])
         u[c <= 0] = -np.inf
         return u
 
@@ -60,14 +62,13 @@ class SOGVFISolver:
         return new_v + (b_up + b_low) / 2
 
     @gin.configurable
-    def solve(self, nk, na, width, m=3, **optimize_params):
-        a_grids, trans_mat = Tauchen(self.rho, self.sigma ** 2, 0).approx(na, m)
+    def solve(self, nk, na, width, tol=1e-6, **optimize_params):
+        a_grids, trans_mat = Rowenhorst(self.rho, self.sigma ** 2, 0).approx(na)
         k_min = self.k_ss - width
         k_max = self.k_ss + width
         k_grids = np.linspace(k_min, k_max, nk, endpoint=True)
 
-        value_mat = np.zeros((nk * len(self.labor_choice), na))
-        policy_mat = np.zeros((nk * len(self.labor_choice), na), dtype=int)
+        value_mat = np.zeros((nk, na))
 
         if 'HPI' in optimize_params.get('methods', []):
             hpi_policy_iter = optimize_params.get('HPI_policy_iter', 5)
@@ -79,10 +80,10 @@ class SOGVFISolver:
             hpi_policy_iter = 0
         mqp = 'MQP' in optimize_params.get('methods', [])
 
-        # (nk, na, nl)
-        y = np.kron(np.exp(a_grids), np.kron(k_grids ** self.alpha, self.labor_choice)).reshape((nk, na, len(self.labor_choice)))
+        # (na, nk, nl)
+        y = np.kron(np.exp(a_grids), np.kron(k_grids ** self.alpha, self.labor_choice)).reshape((na, nk, len(self.labor_choice)))
         # (na, nl, nk)
-        cash_on_hand = y.transpose(1, 2, 0) + (1 - self.delta) * k_grids
+        cash_on_hand = y.transpose(0, 2, 1) + (1 - self.delta) * k_grids
         # (na, nl, nk, nk')
         u_c = self.utility(np.repeat(np.expand_dims(cash_on_hand, -1), nk, axis=-1) - k_grids)
         # (nl,)
@@ -95,7 +96,7 @@ class SOGVFISolver:
         old_value_mat = np.random.random((nk, na))
 
         iter = 0
-        while not np.allclose(old_value_mat, value_mat, atol=self.tol, rtol=0):
+        while not np.allclose(old_value_mat, value_mat, atol=tol, rtol=0):
             iter += 1
             if hpi and iter % hpi_policy_iter == 0:
                 for _ in range(hpi_value_iter):
@@ -117,4 +118,7 @@ class SOGVFISolver:
             if mqp:
                 value_mat = self.mqp(value_mat, old_value_mat)
             
-        return value_mat, k_grids[policy_mat]
+        return SOGVFIResult(self.alpha, self.beta, self.gamma, self.delta, self.rho,
+                            self.sigma, self.eta, self.B, self.L, self.labor_choice,
+                            a_grids, trans_mat, k_grids, value_mat, partial_q,
+                            l_policy_mat.squeeze(), k_policy_mat.squeeze())

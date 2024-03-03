@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
 
+from scipy.interpolate import interp1d
+
 
 @dataclass
 class SOGVFIResult:
@@ -37,18 +39,16 @@ class SOGVFIResult:
         else:
             plt.clf()
 
-    def plot_q(self, title='', fname=None, show=False):
+    def plot_q(self, idxa_vec=None, title='', fname=None, show=False):
+        idxa_vec = np.arange(len(self.a_grid)) if idxa_vec is None else idxa_vec
         for i in range(len(self.labor_choice)):
-            plt.plot(self.k_grid, self.partial_q[i, :, ])
-
-    def plot_policy(self, title='', fname=None, show=False):
-        for idxa in range(len(self.a_grid)):
-            a = self.a_grid[idxa]
-            plt.plot(self.k_grid, self.k_grid[self.policy[:, idxa]], label='a=' + str(round(a, 2)))
-        plt.plot(self.k_grid, self.k_grid, label='45 degree')
-        # plt.scatter([self.k_ss], [self.k_ss])
+            for idxa in idxa_vec:
+                plt.plot(self.k_grid, 
+                         self.partial_q[i, :, idxa], 
+                         label=f"l={self.labor_choice[i]:.2f}, a={self.a_grid[idxa]:.2f}"
+                        )
         plt.legend()
-        plt.title('Policy Function: ' + title)
+        plt.title('Partial Q Function: ' + title)
         if fname is not None:
             plt.savefig(fname)
         if show:
@@ -56,33 +56,55 @@ class SOGVFIResult:
         else:
             plt.clf()
 
-    def plot_capital_diff(self, title='', fname=None):
-        for idxa in range(len(self.a_grid)):
-            a = self.a_grid[idxa]
-            plt.plot(self.k_grid, self.k_grid[self.policy[:, idxa]] - self.k_grid, label='a=' + str(round(a, 2)))
-        plt.plot()
+    def plot_policy(self, idxa_vec=None, title='', fname=None, show=False):
+        idxa_vec = np.arange(len(self.a_grid)) if idxa_vec is None else idxa_vec
+        for i in range(len(self.labor_choice)):
+            for idxa in range(len(self.a_grid)):
+                plt.plot(self.k_grid, 
+                         self.k_grid[self.policy_k[i, :, idxa]], 
+                         label=f"l={self.labor_choice[i]:.2f}, a={self.a_grid[idxa]:.2f}"
+                        )
+        plt.plot(self.k_grid, self.k_grid, label='45 degree')
+        # plt.scatter([self.k_ss], [self.k_ss])
+        plt.legend()
+        plt.title('Conditional Policy Function: ' + title)
+        if fname is not None:
+            plt.savefig(fname)
+        if show:
+            plt.show()
+        else:
+            plt.clf()
+
+    def plot_capital_diff(self, idxa_vec=None, title='', fname=None, show=False):
+        idxa_vec = np.arange(len(self.a_grid)) if idxa_vec is None else idxa_vec
+        for i in range(len(self.labor_choice)):
+            for idxa in range(len(self.a_grid)):
+                plt.plot(self.k_grid, 
+                         self.k_grid[self.policy_k[i, :, idxa]] - self.k_grid, 
+                         label=f"l={self.labor_choice[i]:.2f}, a={self.a_grid[idxa]:.2f}"
+                        )
         plt.legend()
         plt.title('Capital Difference: ' + title)
         if fname is not None:
             plt.savefig(fname)
-        if self._show:
+        if show:
             plt.show()
         else:
             plt.clf()
 
     def euler_error(self, grids):
-        policy_func = [SplineApprox() for _ in range(len(self.a_grid))]
-        for idxa in range(len(self.a_grid)):
-            policy_func[idxa].approx(self.k_grid, self.k_grid[self.policy[:, idxa]])
+        policy_func = [[interp1d(self.k_grid, self.k_grid[self.policy_k[l, :, idxa]]) for idxa in range(len(self.a_grid))] for l in range(len(self.labor_choice))]
 
         grids = np.array(grids)
         k_list = grids[:, 0]
         idxa_list = np.argmin((grids[:, 1].reshape(-1, 1) - self.a_grid.reshape(1, -1)) ** 2, axis=1)
         res = []
         for k, idxa in zip(k_list, idxa_list):
-            k_prime = policy_func[idxa].eval(k)
+            # TO DO: compute Euler error
+            idxl = self.policy_l
+            k_prime = policy_func[idxa](k)
             c = np.exp(self.a_grid[idxa]) * k ** self.alpha + (1 - self.delta) * k - k_prime
-            k_2primes = np.array([policy_func[i].eval(k_prime) for i in range(len(self.a_grid))])
+            k_2primes = np.array([policy_func[i](k_prime) for i in range(len(self.a_grid))])
             c_primes = np.exp(self.a_grid) * k_prime ** self.alpha + (1 - self.delta) * k_prime - k_2primes
             r_primes = self.alpha * np.exp(self.a_grid) * k_prime ** (self.alpha - 1) + 1 - self.delta
             res.append(1 - (self.beta * np.sum(r_primes * self.a_trans[idxa] * c_primes ** (-self.gamma))) ** (-1 / self.gamma) / c)
@@ -136,11 +158,12 @@ class SOGVFIResult:
         else:
             plt.clf()
 
-    def plot_policy_derivative(self, title='', fname=None, show=False):
-        for idxa in range(len(self.a_grid)):
-            a = self.a_grid[idxa]
-            gradient = (self.k_grid[self.policy[1:, idxa]] - self.k_grid[self.policy[:-1, idxa]]) / (self.k_grid[1:] - self.k_grid[:-1])
-            plt.plot((self.k_grid[1:] + self.k_grid[:-1]) / 2, gradient, label='a=' + str(round(a, 2)))
+    def plot_policy_derivative(self, idxa_vec=None, title='', fname=None, show=False):
+        idxa_vec = np.arange(len(self.a_grid)) if idxa_vec is None else idxa_vec
+        for i in range(len(self.labor_choice)):
+            for idxa in idxa_vec:
+                gradient = (self.k_grid[self.policy_k[i, 1:, idxa]] - self.k_grid[self.policy_k[i, :-1, idxa]]) / (self.k_grid[1:] - self.k_grid[:-1])
+                plt.plot((self.k_grid[1:] + self.k_grid[:-1]) / 2, gradient, label=f"l={self.labor_choice[i]:.2f}, a={self.a_grid[idxa]:.2f}")
         plt.legend()
         plt.title('Policy Function Derivative: ' + title)
         if fname is not None:
@@ -150,12 +173,13 @@ class SOGVFIResult:
         else:
             plt.clf()
 
-    def plot_policy_2derivative(self, title='', fname=None, show=False):
-        for idxa in range(len(self.a_grid)):
-            a = self.a_grid[idxa]
-            gradient = (self.k_grid[self.policy[1:, idxa]] - self.k_grid[self.policy[:-1, idxa]]) / (self.k_grid[1:] - self.k_grid[:-1])
-            gradient_2 = (gradient[1:] - gradient[:-1]) / (self.k_grid[2:] - self.k_grid[:-2]) * 2
-            plt.plot((self.k_grid[2:] + self.k_grid[:-2]) / 2, gradient_2, label='a=' + str(round(a, 2)))
+    def plot_policy_2derivative(self, idxa_vec=None, title='', fname=None, show=False):
+        idxa_vec = np.arange(len(self.a_grid)) if idxa_vec is None else idxa_vec
+        for i in range(len(self.labor_choice)):
+            for idxa in idxa_vec:
+                gradient = (self.k_grid[self.policy_k[i, 1:, idxa]] - self.k_grid[self.policy_k[i, :-1, idxa]]) / (self.k_grid[1:] - self.k_grid[:-1])
+                gradient_2 = (gradient[1:] - gradient[:-1]) / (self.k_grid[2:] - self.k_grid[:-2]) * 2
+                plt.plot((self.k_grid[2:] + self.k_grid[:-2]) / 2, gradient_2, label=f"l={self.labor_choice[i]:.2f}, a={self.a_grid[idxa]:.2f}")
         plt.legend()
         plt.title('Policy Function 2nd Derivative: ' + title)
         if fname is not None:
@@ -166,10 +190,8 @@ class SOGVFIResult:
             plt.clf()
 
     def simulate(self, periods=2500, tfp_series=None):
-        policy_func = [SplineApprox() for _ in range(len(self.a_grid))]
-        for idxa in range(len(self.a_grid)):
-            policy_func[idxa].approx(self.k_grid, self.k_grid[self.policy[:, idxa]])
-
+        policy_func = [interp1d(self.k_grid, self.k_grid[self.policy[:, idxa]]) for idxa in range(len(self.a_grid))]
+        # To Do: simulation
         if tfp_series is None:
             idxa_series, a_series = FiniteMarkov(self.a_grid, self.a_trans).simulate(periods, 0)
             tfp_series = (idxa_series, a_series)
@@ -179,7 +201,7 @@ class SOGVFIResult:
         k_series[0] = np.mean(self.k_grid)
 
         for t in range(0, periods + 1):
-            k_series[t + 1] = policy_func[idxa_series[t]].eval(k_series[t])
+            k_series[t + 1] = policy_func[idxa_series[t]](k_series[t])
         a_series = a_series[1:]
         k_series = k_series[1:]
         i_series = k_series[1:] - (1 - self.delta) * k_series[:-1]
@@ -198,6 +220,8 @@ class SOGVFIResult:
             'a_trans': self.a_trans,
             'k_grid': self.k_grid,
             'value': self.value,
-            'policy': self.policy,
+            'policy k': self.policy_k,
+            'policy l': self.policy_l,
+            'partial_q': self.partial_q,
         }
     

@@ -7,4 +7,9 @@ SOGVFISolver.gamma = 2
 SOGVFISolver.eta = 1.5
 SOGVFISolver.B = 1.5
 SOGVFISolver.L = 1
-SOGVFISolver.labor_choice = [0.3, 0.35]
+SOGVFISolver.labor_choice = [0.18, 0.5]
+
+solve.na = 5
+solve.nk = 50
+solve.width = 5
+solve.tol = 1e-7
