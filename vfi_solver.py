@@ -3,6 +3,8 @@ import numpy as np
 from scipy.optimize import root_scalar
 from MarkovApprox import Rowenhorst
 from vfi_res import SOGVFIResult
+from tqdm import tqdm
+import pandas as pd
 
 
 @gin.configurable
@@ -45,7 +47,10 @@ class SOGVFISolver:
         self.k_ss = self.l_ss * kl_ratio
         self.c_ss = self.l_ss * cl_ratio
         self.y_ss = self.c_ss + self.delta * self.k_ss
-        return self.k_ss, self.c_ss, self.y_ss, self.l_ss
+        ss = [{'k': self.k_ss, 'c': self.c_ss, 'y': self.y_ss, 'l': self.l_ss}]
+        for l in self.labor_choice:
+            ss.append({'k': l * kl_ratio, 'c': l * cl_ratio, 'y': l * kl_ratio ** self.alpha, 'l': l})
+        return pd.DataFrame(ss)
 
     def crra(self, x, coeff):
         return x ** (1 - coeff) / (1 - coeff) if coeff != 1 else np.log(x)
@@ -62,7 +67,7 @@ class SOGVFISolver:
         return new_v + (b_up + b_low) / 2
 
     @gin.configurable
-    def solve(self, nk, na, width, tol=1e-6, **optimize_params):
+    def solve(self, nk, na, width, tol=1e-6, **optimize_params) -> SOGVFIResult:
         a_grids, trans_mat = Rowenhorst(self.rho, self.sigma ** 2, 0).approx(na)
         k_min = self.k_ss - width
         k_max = self.k_ss + width
@@ -91,7 +96,7 @@ class SOGVFISolver:
         # (na, nk, nk', nl)
         u_mat = u_c.transpose(0, 2, 3, 1) + u_l
         # (nl, nk, na, nk')
-        u_mat = u_mat.transpose(3, 1, 0, 2)
+        u_mat = u_mat.transpose(3, 1, 0, 2) * (1 - self.beta)
 
         old_value_mat = np.random.random((nk, na))
 
